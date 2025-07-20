@@ -64,7 +64,7 @@
     }
     #modContent textarea {
       width: 100%;
-      height: 300px;
+      height: 200px;
       margin-bottom: 10px;
       font-family: monospace;
       font-size: 14px;
@@ -75,14 +75,14 @@
       font-size: 16px;
       cursor: pointer;
     }
-    #dropArea {
+    #cssDropArea, #jsDropArea {
       border: 2px dashed #333;
       padding: 10px;
       text-align: center;
       margin-bottom: 10px;
       font-size: 16px;
     }
-    #dropArea.dragover {
+    #cssDropArea.dragover, #jsDropArea.dragover {
       background-color: #e0e0e0;
     }
   </style>
@@ -99,28 +99,75 @@
   <div id="modModal">
     <div id="modContent">
       <h2>ソースコードを編集</h2>
-      <div id="dropArea">ここにファイルをドラッグアンドドロップ</div>
-      <textarea id="codeEditor"></textarea>
+      <h3>CSS</h3>
+      <div id="cssDropArea">CSSファイルをここにドラッグアンドドロップ</div>
+      <textarea id="cssEditor"></textarea>
+      <h3>JavaScript</h3>
+      <div id="jsDropArea">JavaScriptファイルをここにドラッグアンドドロップ</div>
+      <textarea id="jsEditor"></textarea>
       <button id="applyButton">適用</button>
       <button id="cancelButton">キャンセル</button>
     </div>
   </div>
 
   <script id="gameScript">
+    // ゲーム設定（編集しやすいように一元管理）
+    const CONFIG = {
+      gridSize: 20, // 1マスのサイズ（ピクセル）
+      tileCount: 20, // キャンバスのマス数（400 / gridSize）
+      snakeInitialPosition: [{ x: 10, y: 10 }], // ヘビの初期位置
+      foodInitialPositions: [{ x: 15, y: 15 }], // リンゴの初期位置（複数可）
+      snakeColor: 'green', // ヘビの色またはテクスチャ
+      foodTexture: 'red', // リンゴの色またはテクスチャ
+      updateInterval: 100, // 更新間隔（ミリ秒）
+      scorePerFood: 10 // リンゴ1つごとのスコア
+    };
+
     const canvas = document.getElementById('gameCanvas');
     const ctx = canvas.getContext('2d');
     const scoreDisplay = document.getElementById('score');
     const gameOverScreen = document.getElementById('gameOver');
     const finalScoreDisplay = document.getElementById('finalScore');
 
-    const gridSize = 20;
-    const tileCount = canvas.width / gridSize;
-    let snake = [{ x: 10, y: 10 }];
-    let food = { x: 15, y: 15 };
+    let snake = [...CONFIG.snakeInitialPosition];
+    let foods = [...CONFIG.foodInitialPositions];
     let dx = 0;
     let dy = 0;
     let score = 0;
     let gameLoop;
+    let snakeTexture = null;
+    let foodTexture = null;
+
+    function initTextures() {
+      if (CONFIG.snakeColor.startsWith('http') || CONFIG.snakeColor.startsWith('data:image')) {
+        snakeTexture = new Image();
+        snakeTexture.src = CONFIG.snakeColor;
+        snakeTexture.onload = () => console.log('Snake texture loaded');
+      } else {
+        snakeTexture = CONFIG.snakeColor;
+      }
+      if (CONFIG.foodTexture.startsWith('http') || CONFIG.foodTexture.startsWith('data:image')) {
+        foodTexture = new Image();
+        foodTexture.src = CONFIG.foodTexture;
+        foodTexture.onload = () => console.log('Food texture loaded');
+      } else {
+        foodTexture = CONFIG.foodTexture;
+      }
+    }
+
+    function drawSnake() {
+      ctx.fillStyle = typeof snakeTexture === 'string' ? snakeTexture : ctx.createPattern(snakeTexture, 'repeat');
+      snake.forEach(segment => {
+        ctx.fillRect(segment.x * CONFIG.gridSize, segment.y * CONFIG.gridSize, CONFIG.gridSize, CONFIG.gridSize);
+      });
+    }
+
+    function drawFoods() {
+      ctx.fillStyle = typeof foodTexture === 'string' ? foodTexture : ctx.createPattern(foodTexture, 'repeat');
+      foods.forEach(food => {
+        ctx.fillRect(food.x * CONFIG.gridSize, food.y * CONFIG.gridSize, CONFIG.gridSize, CONFIG.gridSize);
+      });
+    }
 
     function drawGame() {
       ctx.fillStyle = 'white';
@@ -129,32 +176,33 @@
       const head = { x: snake[0].x + dx, y: snake[0].y + dy };
       snake.unshift(head);
 
-      if (head.x === food.x && head.y === food.y) {
-        score += 10;
+      const eatenFoodIndex = foods.findIndex(food => head.x === food.x && head.y === food.y);
+      if (eatenFoodIndex !== -1) {
+        score += CONFIG.scorePerFood;
         scoreDisplay.textContent = `スコア: ${score}`;
-        generateFood();
+        foods.splice(eatenFoodIndex, 1);
+        if (foods.length === 0) generateFood();
       } else {
         snake.pop();
       }
 
-      ctx.fillStyle = 'green';
-      snake.forEach(segment => {
-        ctx.fillRect(segment.x * gridSize, segment.y * gridSize, gridSize, gridSize);
-      });
+      drawSnake();
+      drawFoods();
 
-      ctx.fillStyle = 'red';
-      ctx.fillRect(food.x * gridSize, food.y * gridSize, gridSize, gridSize);
-
-      if (head.x < 0 || head.x >= tileCount || head.y < 0 || head.y >= tileCount || snake.slice(1).some(segment => segment.x === head.x && segment.y === head.y)) {
+      if (head.x < 0 || head.x >= CONFIG.tileCount || head.y < 0 || head.y >= CONFIG.tileCount || snake.slice(1).some(segment => segment.x === head.x && segment.y === head.y)) {
         endGame();
       }
     }
 
     function generateFood() {
-      food.x = Math.floor(Math.random() * gridSize);
-      food.y = Math.floor(Math.random() * gridSize);
-      if (snake.some(segment => segment.x === food.x && segment.y === food.y)) {
+      const newFood = {
+        x: Math.floor(Math.random() * CONFIG.tileCount),
+        y: Math.floor(Math.random() * CONFIG.tileCount)
+      };
+      if (snake.some(segment => segment.x === newFood.x && segment.y === newFood.y)) {
         generateFood();
+      } else {
+        foods.push(newFood);
       }
     }
 
@@ -165,14 +213,15 @@
     }
 
     function resetGame() {
-      snake = [{ x: 10, y: 10 }];
-      food = { x: 15, y: 15 };
+      snake = [...CONFIG.snakeInitialPosition];
+      foods = [...CONFIG.foodInitialPositions];
       dx = 0;
       dy = 0;
       score = 0;
       scoreDisplay.textContent = `スコア: ${score}`;
       gameOverScreen.style.display = 'none';
-      gameLoop = setInterval(drawGame, 100);
+      initTextures();
+      gameLoop = setInterval(drawGame, CONFIG.updateInterval);
     }
 
     document.addEventListener('keydown', (e) => {
@@ -194,15 +243,18 @@
 
     const modButton = document.getElementById('modButton');
     const modModal = document.getElementById('modModal');
-    const codeEditor = document.getElementById('codeEditor');
+    const cssEditor = document.getElementById('cssEditor');
+    const jsEditor = document.getElementById('jsEditor');
     const applyButton = document.getElementById('applyButton');
     const cancelButton = document.getElementById('cancelButton');
+    const cssDropArea = document.getElementById('cssDropArea');
+    const jsDropArea = document.getElementById('jsDropArea');
     const styleTag = document.getElementById('gameStyles');
     const scriptTag = document.getElementById('gameScript');
-    const dropArea = document.getElementById('dropArea');
 
     modButton.addEventListener('click', () => {
-      codeEditor.value = `/* CSS */\n${styleTag.textContent}\n\n/* JavaScript */\n${scriptTag.textContent}`;
+      cssEditor.value = `/* ゲームのスタイルを編集 */\n${styleTag.textContent}`;
+      jsEditor.value = `/* ゲームのロジックと設定を編集 */\n${scriptTag.textContent}`;
       modModal.style.display = 'block';
     });
 
@@ -212,22 +264,14 @@
           clearInterval(gameLoop);
         }
 
-        const code = codeEditor.value;
-        let cssContent = styleTag.textContent;
-        let jsContent = scriptTag.textContent;
-        const cssMatch = code.match(/\/\* CSS \*\/([\s\S]*?)\/\* JavaScript \*\//);
-        const jsMatch = code.match(/\/\* JavaScript \*\/([\s\S]*)/);
-        if (cssMatch) cssContent = cssMatch[1].trim();
-        if (jsMatch) jsContent = jsMatch[1].trim();
-
-        styleTag.textContent = cssContent;
+        styleTag.textContent = cssEditor.value.replace(/\/\*[\s\S]*?\*\//g, '').trim();
 
         const oldScript = document.getElementById('gameScript');
         oldScript.remove();
 
         const newScript = document.createElement('script');
         newScript.id = 'gameScript';
-        newScript.textContent = jsContent;
+        newScript.textContent = jsEditor.value.replace(/\/\*[\s\S]*?\*\//g, '').trim();
         document.body.appendChild(newScript);
 
         modModal.style.display = 'none';
@@ -241,28 +285,42 @@
       modModal.style.display = 'none';
     });
 
-    dropArea.addEventListener('dragover', (e) => {
+    function handleDrop(e, editor) {
       e.preventDefault();
-      dropArea.classList.add('dragover');
-    });
-
-    dropArea.addEventListener('dragleave', () => {
-      dropArea.classList.remove('dragover');
-    });
-
-    dropArea.addEventListener('drop', (e) => {
-      e.preventDefault();
-      dropArea.classList.remove('dragover');
+      e.target.classList.remove('dragover');
       const file = e.dataTransfer.files[0];
       if (file) {
         const reader = new FileReader();
         reader.onload = (event) => {
-          codeEditor.value = event.target.result;
+          editor.value = event.target.result;
         };
         reader.readAsText(file);
       }
+    }
+
+    cssDropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      cssDropArea.classList.add('dragover');
     });
 
+    cssDropArea.addEventListener('dragleave', () => {
+      cssDropArea.classList.remove('dragover');
+    });
+
+    cssDropArea.addEventListener('drop', (e) => handleDrop(e, cssEditor));
+
+    jsDropArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      jsDropArea.classList.add('dragover');
+    });
+
+    jsDropArea.addEventListener('dragleave', () => {
+      jsDropArea.classList.remove('dragover');
+    });
+
+    jsDropArea.addEventListener('drop', (e) => handleDrop(e, jsEditor));
+
+    initTextures();
     resetGame();
   </script>
 </body>
